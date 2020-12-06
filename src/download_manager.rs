@@ -4,6 +4,7 @@ use actix_web::HttpResponse;
 use actix_web::App;
 use lazy_static::lazy_static;
 use std::sync::Mutex;
+use std::collections::HashMap;
 use progresslib2::*;
 use serde::{Deserialize, Serialize};
 use tokio::process::Command;
@@ -165,3 +166,63 @@ pub fn start_download<S: AsRef<str>>(
     }
 }
 
+pub fn url_exists_in_progress<S: AsRef<str>>(url: S) -> Result<bool, &'static str> {
+    match PROGHOLDER.lock() {
+        Err(_) => Err("Failed to acquire lock"),
+        Ok(guard) => Ok(guard.progresses.contains_key(url.as_ref())),
+    }
+}
+
+pub fn url_exists_and_is_not_errored<S: AsRef<str>>(url: S) -> Result<bool, &'static str> {
+    match PROGHOLDER.lock() {
+        Err(_) => Err("Failed to acquire lock"),
+        Ok(mut guard) => {
+            match guard.progresses.get_mut(url.as_ref()) {
+                None => Ok(false),
+                Some(prog) => match prog.get_progress_error() {
+                    None => Ok(true),
+                    Some(_) => Ok(false),
+                }
+            }
+        }
+    }
+}
+
+pub fn get_progresses_info<S: AsRef<str>>(
+    progress_keys: Vec<S>
+) -> Result<HashMap<String, Vec<StageView>>, &'static str> {
+    if progress_keys.is_empty() {
+        return get_all_progresses_info();
+    }
+
+    match PROGHOLDER.lock() {
+        Err(_) => Err("Failed to acquire lock"),
+        Ok(mut guard) => {
+            let mut hashmap = HashMap::<String, Vec<StageView>>::new();
+            for key in progress_keys.iter() {
+                match guard.progresses.get_mut(key.as_ref()) {
+                    // if not found, just return a map with less
+                    // entries than requested
+                    None => {}
+                    Some(progitem) => {
+                        hashmap.insert(key.as_ref().to_string(), progitem.into());
+                    }
+                }
+            }
+            Ok(hashmap)
+        }
+    }
+}
+
+pub fn get_all_progresses_info() -> Result<HashMap<String, Vec<StageView>>, &'static str> {
+    match PROGHOLDER.lock() {
+        Err(_) => Err("Failed to acquire lock"),
+        Ok(mut guard) => {
+            let mut hashmap = HashMap::<String, Vec<StageView>>::new();
+            for (key, progitem) in guard.progresses.iter_mut() {
+                hashmap.insert(key.clone(), progitem.into());
+            }
+            Ok(hashmap)
+        }
+    }
+}
