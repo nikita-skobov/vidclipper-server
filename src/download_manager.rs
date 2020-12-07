@@ -88,7 +88,10 @@ pub async fn download_video(
             if let Err(_) = thing { break; }
             let thing = thing.unwrap();
 
-            if let Some(ref line) = thing {
+            // break if we didnt get a line, ie: end of line
+            if let None = thing {
+                break;
+            } else if let Some(ref line) = thing {
                 let prog_opt = get_ytdl_progress(line);
                 if let None = prog_opt { continue; }
 
