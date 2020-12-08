@@ -14,9 +14,11 @@ use std::io::Error;
 use tokio::process::Command;
 use tokio::process::Child;
 use tokio::process::ChildStdout;
+use tokio::process::ChildStderr;
 use tokio::io::Lines;
+use tokio::fs;
 use tokio::io::{BufReader, AsyncBufReadExt};
-use std::process::Stdio;
+use std::{path::{PathBuf, Path}, process::Stdio};
 
 pub const FAILED_TO_ACQUIRE_LOCK: &'static str = "Failed to acquire lock";
 
@@ -32,6 +34,14 @@ pub struct DownloadRequest {
     pub name: Option<String>,
     pub start: Option<u32>,
     pub duration: Option<u32>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SplitRequest {
+    pub start: Option<u32>,
+    pub duration: Option<u32>,
+    pub input_match: String,
+    pub output_prefix: String,
 }
 
 // TODO: dont iter over all alphanumeric, we only
@@ -95,8 +105,8 @@ pub fn create_command<S: AsRef<str>>(exe_and_args: &[S]) -> Command {
 }
 
 pub fn setup_child_and_reader(
-    cmd: Command
-) -> Result<(Child, Lines<BufReader<ChildStdout>>), String> {
+    cmd: Command,
+) -> Result<(Child, Lines<BufReader<ChildStdout>>, Lines<BufReader<ChildStderr>>), String> {
     let mut cmd = cmd;
     let mut child = match cmd.spawn() {
         Ok(c) => c,
@@ -112,10 +122,17 @@ pub fn setup_child_and_reader(
             return Err(error_string);
         }
     };
-    // create a reader from the stdout handle we created
-    // pass that reader into the following future spawned on tokio
-    let reader = BufReader::new(stdout).lines();
-    Ok((child, reader))
+    let stderr = match child.stderr.take() {
+        Some(s) => s,
+        None => {
+            let error_string = format!("Failed to get handle child process stderr");
+            return Err(error_string);
+        }
+    };
+    // create a reader from the handles we created
+    let reader_stdout = BufReader::new(stdout).lines();
+    let reader_stderr = BufReader::new(stderr).lines();
+    Ok((child, reader_stdout, reader_stderr))
 }
 
 pub fn handle_child_exit(
@@ -164,7 +181,7 @@ pub async fn download_video(
 
     // create a reader from the stdout handle we created
     // pass that reader into the following future spawned on tokio
-    let (child, mut reader) = setup_child_and_reader(cmd)?;
+    let (child, mut reader, _) = setup_child_and_reader(cmd)?;
     tokio::spawn(async move {
         loop {
             let thing = reader.next_line().await;
@@ -195,21 +212,164 @@ pub async fn download_video(
     handle_child_exit(child_status)
 }
 
+pub async fn cut_video(
+    split_request: SplitRequest
+) -> TaskResult {
+    // first try to find the actual file path/name
+    // from the matching string we were given
+    // the issue is that we dont know the extension, but
+    // we can easily find it if theres only one file
+    // that matches the input_match
+    // TODO: dont assume we are in current dir...
+    let input_path = find_file_path_by_match(&split_request.input_match, ".").await?;
+
+    let input_string = match input_path.to_str() {
+        Some(s) => s.to_string(),
+        None => {
+            let error_string = format!("File path contains invalid characters: {:?}", input_path);
+            return Err(error_string);
+        }
+    };
+    let original_file_name = match input_path.file_name() {
+        None => {
+            let error_string = format!("File path contains invalid characters: {:?}", input_path);
+            return Err(error_string);
+        },
+        Some(os_str) => match os_str.to_str() {
+            Some(s) => s.to_string(),
+            None => {
+                let error_string = format!("File path contains invalid characters: {:?}", os_str);
+                return Err(error_string);
+            }
+        },
+    };
+    let output_file_name = format!("{}{}", split_request.output_prefix, original_file_name);
+
+    let mut exe_and_args = vec![
+        "ffmpeg".into(),
+        "-loglevel".into(),
+        "error".into(),
+        "-hide_banner".into(),
+        "-stats".into(),
+    ];
+    if let Some(ref start) = split_request.start {
+        exe_and_args.push("-ss".into());
+        exe_and_args.push(start.to_string());
+    }
+    if let Some(ref duration) = split_request.duration {
+        exe_and_args.push("-t".into());
+        exe_and_args.push(duration.to_string());
+    }
+    exe_and_args.push("-i".into());
+    exe_and_args.push(input_string);
+    exe_and_args.push("-acodec".into());
+    exe_and_args.push("copy".into());
+    exe_and_args.push("-vcodec".into());
+    exe_and_args.push("copy".into());
+    exe_and_args.push("-y".into());
+    exe_and_args.push(output_file_name);
+    println!("running with commands:\n{:#?}", exe_and_args);
+    let cmd = create_command(&exe_and_args[..]);
+
+    // create a reader from the stdout handle we created
+    // pass that reader into the following future spawned on tokio
+    let (child, _, mut reader) = setup_child_and_reader(cmd)?;
+    tokio::spawn(async move {
+        loop {
+            let thing = reader.next_line().await;
+            if let Err(e) = thing {
+                println!("there was error: {}", e);
+                break;
+            }
+            let thing = thing.unwrap();
+
+            // break if we didnt get a line, ie: end of line
+            if let None = thing {
+                break;
+            } else if let Some(ref line) = thing {
+                println!("{}", line);
+                // use_me_from_progress_holder(&url, &PROGHOLDER, |me| {
+                //     println!("setting progress to {}", progress);
+                //     me.inc_progress_percent(progress as f64);
+                // });
+            }
+        }
+    });
+
+    // the above happens asynchronously, but here we await the child process
+    // itself. as we await this child process, the above async future can run
+    // whenever the reader finds a next line. But after here we actually return
+    // our TaskResult that is read by the progresslib2
+    let child_status = child.await;
+
+    handle_child_exit(child_status)
+}
+
+pub async fn find_file_path_by_match<S: AsRef<str>, P: AsRef<Path>>(
+    matching: S,
+    path: P,
+) -> Result<PathBuf, String> {
+    let readdir = fs::read_dir(path).await;
+    let mut readdir_entries = match readdir {
+        Err(e) => {
+            let error_string = format!("Failed to read dir: {}", e);
+            return Err(error_string);
+        }
+        Ok(entries) => entries,
+    };
+
+    loop {
+        match readdir_entries.next_entry().await {
+            Err(e) => {
+                let error_string = format!("Failed to iterate over dir: {}", e);
+                return Err(error_string);
+            }
+            Ok(direntry_opt) => match direntry_opt {
+                None => {
+                    // I think this means we read
+                    // all files in this directory?
+                    let error_string = format!("Failed to find file matching {}", matching.as_ref());
+                    return Err(error_string);
+                }
+                Some(direntry) => {
+                    let file_name = match direntry.file_name().to_str() {
+                        Some(s) => s.to_string(),
+                        None => return Err("Dir entry contains invalid characters".into()),
+                    };
+                    if file_name.contains(matching.as_ref()) {
+                        // found the match
+                        return Ok(direntry.path());
+                    }
+                }
+            }
+        }
+    }
+}
+
 pub fn create_download_item(
     download_request: DownloadRequest,
 ) -> ProgressItem {
     let url = download_request.url;
     let name = download_request.name;
     let name = match name {
-        None => Some(random_download_name()),
-        Some(ref s) => Some(s.clone()),
+        None => random_download_name(),
+        Some(ref s) => s.clone(),
     };
     let download_stage = make_stage!(download_video;
         url,
-        name,
+        Some(name.clone()),
+    );
+    let cut_stage = make_stage!(cut_video;
+        SplitRequest {
+            start: None,
+            duration: None,
+            output_prefix: "rererererererererere.".into(),
+            input_match: name
+        }
     );
     let mut progitem = ProgressItem::new();
     progitem.register_stage(download_stage);
+    progitem.register_stage(cut_stage);
     progitem
 }
 
@@ -293,5 +453,25 @@ pub fn get_all_progresses_info() -> Result<HashMap<String, Vec<StageView>>, &'st
             }
             Ok(hashmap)
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn find_file_path_by_match_works() {
+        let mut rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async move {
+            let res = find_file_path_by_match("Cargo", ".").await;
+            match res {
+                Ok(s) => {
+                    let s = s.to_str().unwrap();
+                    assert!(s.contains("Cargo.toml"))
+                },
+                Err(_) => assert!(false)
+            }
+        });
     }
 }
