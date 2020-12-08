@@ -9,7 +9,12 @@ use progresslib2::*;
 use rand::prelude::*;
 use rand::distributions::Alphanumeric;
 use serde::{Deserialize, Serialize};
+use std::process::ExitStatus;
+use std::io::Error;
 use tokio::process::Command;
+use tokio::process::Child;
+use tokio::process::ChildStdout;
+use tokio::io::Lines;
 use tokio::io::{BufReader, AsyncBufReadExt};
 use std::process::Stdio;
 
@@ -69,22 +74,30 @@ pub fn get_ytdl_progress(line: &str) -> Option<u8> {
     ret_value
 }
 
-pub async fn download_video(
-    url: String,
-    output_name: Option<String>,
-) -> TaskResult {
-    // form the command via all of the args it needs
-    // and do basic spawn error checking
-    let mut cmd = Command::new("youtube-dl");
-    cmd.arg("--newline");
-    cmd.arg("--ignore-config");
-    cmd.arg(&url);
-    if let Some(output_name) = output_name {
-        cmd.arg("-o");
-        cmd.arg(output_name);
+/// provide an array/vec of string references where the first
+/// element in the array is the executable name, and everything after
+/// that is the arguments. note that options like: "-o ./src" should
+/// be passed as two elements ie: [..., "-o", "./src", ...]
+pub fn create_command<S: AsRef<str>>(exe_and_args: &[S]) -> Command {
+    assert!(exe_and_args.len() >= 1);
+    let mut cmd = Command::new(exe_and_args[0].as_ref());
+    for i in 1..exe_and_args.len() {
+        cmd.arg(exe_and_args[i].as_ref());
     }
+
+    // it is assumed you want it piped,
+    // but you can unset this yourself
+    // after it is returned
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
+
+    cmd
+}
+
+pub fn setup_child_and_reader(
+    cmd: Command
+) -> Result<(Child, Lines<BufReader<ChildStdout>>), String> {
+    let mut cmd = cmd;
     let mut child = match cmd.spawn() {
         Ok(c) => c,
         Err(e) => {
@@ -101,7 +114,57 @@ pub async fn download_video(
     };
     // create a reader from the stdout handle we created
     // pass that reader into the following future spawned on tokio
-    let mut reader = BufReader::new(stdout).lines();
+    let reader = BufReader::new(stdout).lines();
+    Ok((child, reader))
+}
+
+pub fn handle_child_exit(
+    child_status: Result<ExitStatus, Error>
+) -> Result<(), String> {
+    let status = match child_status {
+        Ok(s) => s,
+        Err(e) => {
+            let error_string = format!("child process encountered an error: {}", e);
+            return Err(error_string);
+        }
+    };
+
+    match status.success() {
+        true => Ok(()),
+        false => {
+            let error_code = status.code();
+            if let None = error_code {
+                return Err("child process failed to exit with a valid exit code".into());
+            }
+            let error_code = status.code().unwrap();
+            let error_string = format!("child process exited with error code: {}", error_code);
+            Err(error_string)
+        }
+    }
+}
+
+pub async fn download_video(
+    url: String,
+    output_name: Option<String>,
+) -> TaskResult {
+    // form the command via all of the args it needs
+    // and do basic spawn error checking
+    let mut exe_and_args = vec![
+        "youtube-dl",
+        "--newline",
+        "--ignore-config",
+        &url,
+    ];
+    let output_name = output_name.unwrap_or(String::from(""));
+    if !output_name.is_empty() {
+        exe_and_args.push("-o");
+        exe_and_args.push(&output_name);
+    }
+    let cmd = create_command(&exe_and_args[..]);
+
+    // create a reader from the stdout handle we created
+    // pass that reader into the following future spawned on tokio
+    let (child, mut reader) = setup_child_and_reader(cmd)?;
     tokio::spawn(async move {
         loop {
             let thing = reader.next_line().await;
@@ -129,26 +192,7 @@ pub async fn download_video(
     // whenever the reader finds a next line. But after here we actually return
     // our TaskResult that is read by the progresslib2
     let child_status = child.await;
-    let status = match child_status {
-        Ok(s) => s,
-        Err(e) => {
-            let error_string = format!("child process encountered an error: {}", e);
-            return Err(error_string);
-        }
-    };
-
-    match status.success() {
-        true => Ok(()),
-        false => {
-            let error_code = status.code();
-            if let None = error_code {
-                return Err("child process failed to exit with a valid exit code".into());
-            }
-            let error_code = status.code().unwrap();
-            let error_string = format!("child process exited with error code: {}", error_code);
-            Err(error_string)
-        }
-    }
+    handle_child_exit(child_status)
 }
 
 pub fn create_download_item(
