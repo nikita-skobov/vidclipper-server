@@ -6,6 +6,8 @@ use lazy_static::lazy_static;
 use std::sync::Mutex;
 use std::collections::HashMap;
 use progresslib2::*;
+use rand::prelude::*;
+use rand::distributions::Alphanumeric;
 use serde::{Deserialize, Serialize};
 use tokio::process::Command;
 use tokio::io::{BufReader, AsyncBufReadExt};
@@ -17,6 +19,24 @@ lazy_static! {
     static ref PROGHOLDER: Mutex<ProgressHolder<String>> = Mutex::new(
         ProgressHolder::<String>::default()
     );
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DownloadRequest {
+    pub url: String,
+    pub name: Option<String>,
+    pub start: Option<u32>,
+    pub duration: Option<u32>,
+}
+
+// TODO: dont iter over all alphanumeric, we only
+// want the lowercase ones...
+pub fn random_download_name() -> String {
+    rand::thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(8)
+        .collect::<String>()
+        .to_lowercase()
 }
 
 /// reads a given line from the output of youtube-dl
@@ -131,14 +151,14 @@ pub async fn download_video(
     }
 }
 
-pub fn create_download_item<S: AsRef<str>, N: AsRef<str>>(
-    url: S,
-    name: Option<N>,
+pub fn create_download_item(
+    download_request: DownloadRequest,
 ) -> ProgressItem {
-    let url = url.as_ref().to_string();
+    let url = download_request.url;
+    let name = download_request.name;
     let name = match name {
-        None => None,
-        Some(s) => Some(s.as_ref().to_string()),
+        None => Some(random_download_name()),
+        Some(ref s) => Some(s.clone()),
     };
     let download_stage = make_stage!(download_video;
         url,
@@ -149,12 +169,13 @@ pub fn create_download_item<S: AsRef<str>, N: AsRef<str>>(
     progitem
 }
 
-pub fn start_download<S: AsRef<str>>(
-    url: S,
-    name: Option<S>,
+pub fn start_download(
+    download_request: DownloadRequest
 ) -> Result<(), String>{
-    let url = url.as_ref().to_string();
-    let mut progitem = create_download_item(&url, name);
+    // since the url is required,
+    // the url will be treated as the key.
+    let url = download_request.url.clone();
+    let mut progitem = create_download_item(download_request);
     match PROGHOLDER.lock() {
         Err(_) => Err(FAILED_TO_ACQUIRE_LOCK.into()),
         Ok(mut guard) => {
