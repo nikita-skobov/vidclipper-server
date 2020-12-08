@@ -1,7 +1,3 @@
-use actix_web::web;
-use actix_web::HttpServer;
-use actix_web::HttpResponse;
-use actix_web::App;
 use lazy_static::lazy_static;
 use std::sync::Mutex;
 use std::collections::HashMap;
@@ -213,7 +209,8 @@ pub async fn download_video(
 }
 
 pub async fn cut_video(
-    split_request: SplitRequest
+    url: String,
+    split_request: SplitRequest,
 ) -> TaskResult {
     // first try to find the actual file path/name
     // from the matching string we were given
@@ -288,6 +285,10 @@ pub async fn cut_video(
                 break;
             } else if let Some(ref line) = thing {
                 println!("{}", line);
+                // TODO: update progress.
+                // ffmpeg reports output on each stderr line and has the
+                // frame index. easiest way to get percentage would be
+                // to divide by total frames probably?
                 // use_me_from_progress_holder(&url, &PROGHOLDER, |me| {
                 //     println!("setting progress to {}", progress);
                 //     me.inc_progress_percent(progress as f64);
@@ -356,14 +357,15 @@ pub fn create_download_item(
         Some(ref s) => s.clone(),
     };
     let download_stage = make_stage!(download_video;
-        url,
+        url.clone(),
         Some(name.clone()),
     );
     let cut_stage = make_stage!(cut_video;
+        url,
         SplitRequest {
-            start: None,
-            duration: None,
-            output_prefix: "rererererererererere.".into(),
+            start: download_request.start,
+            duration: download_request.duration,
+            output_prefix: "clipped.".into(),
             input_match: name
         }
     );
