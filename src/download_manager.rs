@@ -158,7 +158,7 @@ pub fn handle_child_exit(
 
 pub async fn download_video(
     url: String,
-    output_name: Option<String>,
+    output_name: String,
 ) -> TaskResult {
     // form the command via all of the args it needs
     // and do basic spawn error checking
@@ -167,12 +167,9 @@ pub async fn download_video(
         "--newline",
         "--ignore-config",
         &url,
+        "-o",
+        &output_name,
     ];
-    let output_name = output_name.unwrap_or(String::from(""));
-    if !output_name.is_empty() {
-        exe_and_args.push("-o");
-        exe_and_args.push(&output_name);
-    }
     let cmd = create_command(&exe_and_args[..]);
 
     // create a reader from the stdout handle we created
@@ -358,7 +355,7 @@ pub fn create_download_item(
     };
     let download_stage = make_stage!(download_video;
         url.clone(),
-        Some(name.clone()),
+        name.clone(),
     );
     let cut_stage = make_stage!(cut_video;
         url,
