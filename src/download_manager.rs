@@ -343,7 +343,8 @@ pub async fn cut_video(
                     continue;
                 }
                 let time_millis = time_millis.unwrap();
-                let progress = time_millis as f64 / duration_millis as f64;
+                let mut progress = time_millis as f64 / duration_millis as f64;
+                if progress > 1.0 { progress = 1.0 };
                 println!("time_millis: {}, duration_millis: {}, progress: {}", time_millis, duration_millis, progress);
                 use_me_from_progress_holder(&url, &PROGHOLDER, |me| {
                     me.inc_progress_percent_normalized(progress);
@@ -443,7 +444,8 @@ pub async fn transcode_clip(
                     continue;
                 }
                 let time_millis = time_millis.unwrap();
-                let progress = time_millis as f64 / duration_millis as f64;
+                let mut progress = time_millis as f64 / duration_millis as f64;
+                if progress > 1.0 { progress = 1.0 };
                 println!("time_millis: {}, duration_millis: {}, progress: {}", time_millis, duration_millis, progress);
                 use_me_from_progress_holder(&url, &PROGHOLDER, |me| {
                     me.inc_progress_percent_normalized(progress);
