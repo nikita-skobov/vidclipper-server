@@ -457,14 +457,7 @@ pub fn start_download(
     }
 }
 
-pub fn url_exists_in_progress<S: AsRef<str>>(url: S) -> Result<bool, &'static str> {
-    match PROGHOLDER.lock() {
-        Err(_) => Err(FAILED_TO_ACQUIRE_LOCK),
-        Ok(guard) => Ok(guard.progresses.contains_key(url.as_ref())),
-    }
-}
-
-pub fn url_exists_and_is_not_errored<S: AsRef<str>>(url: S) -> Result<bool, &'static str> {
+pub fn url_exists_and_is_in_progress<S: AsRef<str>>(url: S) -> Result<bool, &'static str> {
     match PROGHOLDER.lock() {
         Err(_) => Err(FAILED_TO_ACQUIRE_LOCK),
         Ok(mut guard) => {
