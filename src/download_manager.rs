@@ -455,6 +455,23 @@ pub fn get_all_progresses_info() -> Result<HashMap<String, Vec<StageView>>, &'st
     }
 }
 
+pub fn get_time_string_from_line<S: AsRef<str>>(line: S) -> Option<String> {
+    let line = line.as_ref();
+    let time_str = "time=";
+    let time_len = time_str.len();
+    let time_index = line.find(time_str)?;
+    let time_index = time_index + time_len;
+    // it is probably "00:00:00.00" format, so 11 chars
+    let mut out_str = String::with_capacity(11);
+    for c in line.chars().skip(time_index) {
+        if c.is_whitespace() {
+            break;
+        }
+        out_str.push(c);
+    }
+    Some(out_str)
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -472,5 +489,12 @@ mod test {
                 Err(_) => assert!(false)
             }
         });
+    }
+
+    #[test]
+    fn can_extract_time_from_ffmpeg_output() {
+        let sample = "frame=  677 fps= 63 q=-1.0 Lsize=   16227kB time=00:00:28.11 bitrate=4728.7kbits/s speed=2.63x";
+        let time_string = get_time_string_from_line(&sample).unwrap();
+        assert_eq!(time_string, "00:00:28.11");
     }
 }
