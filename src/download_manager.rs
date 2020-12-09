@@ -170,6 +170,7 @@ pub async fn download_video(
         "-o",
         &output_name,
     ];
+    println!("args: {:#?}", exe_and_args);
     let cmd = create_command(&exe_and_args[..]);
 
     // create a reader from the stdout handle we created
@@ -245,6 +246,8 @@ pub async fn cut_video(
         "error".into(),
         "-hide_banner".into(),
         "-stats".into(),
+        "-progress".into(),
+        "pipe:1".into(),
     ];
     if let Some(ref start) = split_request.start {
         exe_and_args.push("-ss".into());
@@ -267,7 +270,12 @@ pub async fn cut_video(
 
     // create a reader from the stdout handle we created
     // pass that reader into the following future spawned on tokio
-    let (child, _, mut reader) = setup_child_and_reader(cmd)?;
+    let (child, mut reader, _) = setup_child_and_reader(cmd)?;
+
+    let duration_millis = match split_request.duration {
+        None => 1, // TODO: find the total duration of the input file via ffprobe
+        Some(d) => d * 1000,
+    };
     tokio::spawn(async move {
         loop {
             let thing = reader.next_line().await;
@@ -281,15 +289,20 @@ pub async fn cut_video(
             if let None = thing {
                 break;
             } else if let Some(ref line) = thing {
-                println!("{}", line);
-                // TODO: update progress.
-                // ffmpeg reports output on each stderr line and has the
-                // frame index. easiest way to get percentage would be
-                // to divide by total frames probably?
-                // use_me_from_progress_holder(&url, &PROGHOLDER, |me| {
-                //     println!("setting progress to {}", progress);
-                //     me.inc_progress_percent(progress as f64);
-                // });
+                let time_string = get_time_string_from_line(&line);
+                if time_string.is_none() {
+                    continue;
+                }
+                let time_millis = get_millis_from_time_string(time_string.unwrap());
+                if time_millis.is_none() {
+                    continue;
+                }
+                let time_millis = time_millis.unwrap();
+                let progress = time_millis as f64 / duration_millis as f64;
+                println!("time_millis: {}, duration_millis: {}, progress: {}", time_millis, duration_millis, progress);
+                use_me_from_progress_holder(&url, &PROGHOLDER, |me| {
+                    me.inc_progress_percent_normalized(progress);
+                });
             }
         }
     });
@@ -457,7 +470,7 @@ pub fn get_all_progresses_info() -> Result<HashMap<String, Vec<StageView>>, &'st
 
 pub fn get_time_string_from_line<S: AsRef<str>>(line: S) -> Option<String> {
     let line = line.as_ref();
-    let time_str = "time=";
+    let time_str = "out_time_us=";
     let time_len = time_str.len();
     let time_index = line.find(time_str)?;
     let time_index = time_index + time_len;
@@ -474,28 +487,8 @@ pub fn get_time_string_from_line<S: AsRef<str>>(line: S) -> Option<String> {
 
 pub fn get_millis_from_time_string<S: AsRef<str>>(time_string: S) -> Option<u32> {
     let time_string = time_string.as_ref();
-    if time_string.len() < 10 {
-        return None;
-    }
-    // TODO: check for colons and dots....
-    // this function expects a time string
-    // in the format:
-    // HH:MM:SS.millis
-    let hours_str = &time_string[0..2];
-    let mins_str = &time_string[3..5];
-    let sec_str = &time_string[6..8];
-    let millis_str = &time_string[9..];
-
-    let hours = hours_str.parse::<u32>().ok()?;
-    let mins = mins_str.parse::<u32>().ok()?;
-    let sec = sec_str.parse::<u32>().ok()?;
-    let millis = millis_str.parse::<u32>().ok()?;
-
-    // turn everything into seconds, add the seconds
-    // multiply by 1000, then add the millis
-    let total_seconds = sec + (mins * 60) + (hours * 3600);
-    let total_millis = (total_seconds * 1000) + millis;
-    Some(total_millis)
+    let micros = time_string.parse::<u64>().ok()?;
+    Some(micros as u32 / 1000)
 }
 
 #[cfg(test)]
@@ -515,20 +508,5 @@ mod test {
                 Err(_) => assert!(false)
             }
         });
-    }
-
-    #[test]
-    fn can_extract_time_from_ffmpeg_output() {
-        let sample = "frame=  677 fps= 63 q=-1.0 Lsize=   16227kB time=00:00:28.11 bitrate=4728.7kbits/s speed=2.63x";
-        let time_string = get_time_string_from_line(&sample).unwrap();
-        assert_eq!(time_string, "00:00:28.11");
-    }
-
-    #[test]
-    fn can_parse_ffmpeg_time_string() {
-        let sample = "frame=  677 fps= 63 q=-1.0 Lsize=   16227kB time=00:00:28.11 bitrate=4728.7kbits/s speed=2.63x";
-        let time_string = get_time_string_from_line(&sample).unwrap();
-        let millis = get_millis_from_time_string(time_string).unwrap();
-        assert_eq!(millis, 28011);
     }
 }
