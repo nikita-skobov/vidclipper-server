@@ -175,7 +175,7 @@ pub async fn download_video(
 
     // create a reader from the stdout handle we created
     // pass that reader into the following future spawned on tokio
-    let (child, mut reader, _) = setup_child_and_reader(cmd)?;
+    let (child, mut reader, mut stderr_reader) = setup_child_and_reader(cmd)?;
     tokio::spawn(async move {
         loop {
             let thing = reader.next_line().await;
@@ -194,6 +194,18 @@ pub async fn download_video(
                     println!("setting progress to {}", progress);
                     me.inc_progress_percent(progress as f64);
                 });
+            }
+        }
+    });
+    // I think you need to process stderr on this one
+    // otherwise it fails more often?....
+    tokio::spawn(async move {
+        loop {
+            let thing = stderr_reader.next_line().await;
+            if let Err(_) = thing { break; }
+            let thing = thing.unwrap();
+            if let None = thing {
+                break;
             }
         }
     });
