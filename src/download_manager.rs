@@ -222,6 +222,12 @@ pub async fn cut_video(
     url: String,
     split_request: SplitRequest,
 ) -> TaskResult {
+    if split_request.duration.is_none() && split_request.start.is_none() {
+        // no point in running ffmpeg just to copy the existing streams
+        // to a new file.
+        return Ok(());
+    }
+
     // first try to find the actual file path/name
     // from the matching string we were given
     // the issue is that we dont know the extension, but
