@@ -39,7 +39,6 @@ pub struct DownloadRequest {
 pub struct SplitRequest {
     pub start: Option<u32>,
     pub duration: Option<u32>,
-    pub input_match: String,
     pub output_prefix: String,
 }
 
@@ -417,8 +416,7 @@ pub fn create_download_item(
         SplitRequest {
             start: download_request.start,
             duration: download_request.duration,
-            output_prefix: "clipped.".into(),
-            input_match: name.clone(),
+            output_prefix: format!("clipped.{}.", name.clone()),
         }
     );
 
