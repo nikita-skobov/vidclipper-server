@@ -472,9 +472,20 @@ pub fn url_exists_and_is_not_errored<S: AsRef<str>>(url: S) -> Result<bool, &'st
         Ok(mut guard) => {
             match guard.progresses.get_mut(url.as_ref()) {
                 None => Ok(false),
-                Some(prog) => match prog.get_progress_error() {
-                    None => Ok(true),
-                    Some(_) => Ok(false),
+                Some(prog) => {
+                    if prog.get_progress_error().is_some() {
+                        return Ok(false);
+                    }
+                    // if it exists, but is not in error
+                    // then we also want to check if it is done
+                    // this has the effect of telling the user that
+                    // since we are done, you can go ahead
+                    // and remove/update this progress item
+                    // essentially this allows for destroying the
+                    // history of this progress item after its already done
+                    // TODO: consider alternatives... do I want to preserve
+                    // this history somehow?
+                    Ok(!prog.is_done())
                 }
             }
         }
