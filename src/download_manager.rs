@@ -472,6 +472,32 @@ pub fn get_time_string_from_line<S: AsRef<str>>(line: S) -> Option<String> {
     Some(out_str)
 }
 
+pub fn get_millis_from_time_string<S: AsRef<str>>(time_string: S) -> Option<u32> {
+    let time_string = time_string.as_ref();
+    if time_string.len() < 10 {
+        return None;
+    }
+    // TODO: check for colons and dots....
+    // this function expects a time string
+    // in the format:
+    // HH:MM:SS.millis
+    let hours_str = &time_string[0..2];
+    let mins_str = &time_string[3..5];
+    let sec_str = &time_string[6..8];
+    let millis_str = &time_string[9..];
+
+    let hours = hours_str.parse::<u32>().ok()?;
+    let mins = mins_str.parse::<u32>().ok()?;
+    let sec = sec_str.parse::<u32>().ok()?;
+    let millis = millis_str.parse::<u32>().ok()?;
+
+    // turn everything into seconds, add the seconds
+    // multiply by 1000, then add the millis
+    let total_seconds = sec + (mins * 60) + (hours * 3600);
+    let total_millis = (total_seconds * 1000) + millis;
+    Some(total_millis)
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -496,5 +522,13 @@ mod test {
         let sample = "frame=  677 fps= 63 q=-1.0 Lsize=   16227kB time=00:00:28.11 bitrate=4728.7kbits/s speed=2.63x";
         let time_string = get_time_string_from_line(&sample).unwrap();
         assert_eq!(time_string, "00:00:28.11");
+    }
+
+    #[test]
+    fn can_parse_ffmpeg_time_string() {
+        let sample = "frame=  677 fps= 63 q=-1.0 Lsize=   16227kB time=00:00:28.11 bitrate=4728.7kbits/s speed=2.63x";
+        let time_string = get_time_string_from_line(&sample).unwrap();
+        let millis = get_millis_from_time_string(time_string).unwrap();
+        assert_eq!(millis, 28011);
     }
 }
