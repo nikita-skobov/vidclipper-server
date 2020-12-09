@@ -22,6 +22,9 @@ lazy_static! {
     static ref PROGHOLDER: Mutex<ProgressHolder<String>> = Mutex::new(
         ProgressHolder::<String>::default()
     );
+    static ref SOURCEHOLDER: Mutex<HashMap<String, PathBuf>> = Mutex::new(
+        HashMap::new()
+    );
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -172,6 +175,7 @@ pub async fn download_video(
     ];
     println!("args: {:#?}", exe_and_args);
     let cmd = create_command(&exe_and_args[..]);
+    let url_clone = url.clone(); // needed for output
 
     // create a reader from the stdout handle we created
     // pass that reader into the following future spawned on tokio
@@ -215,7 +219,20 @@ pub async fn download_video(
     // whenever the reader finds a next line. But after here we actually return
     // our TaskResult that is read by the progresslib2
     let child_status = child.await;
-    handle_child_exit(child_status)
+    let res = handle_child_exit(child_status);
+    if res.is_ok() {
+        // say that we have downloaded this url
+        // at the location
+        // TODO: dont assume current directory
+        let output_path = find_file_path_by_match(&output_name, ".").await?;
+        let mut guard = SOURCEHOLDER.lock().map_or_else(
+            |_| Err("Failed to save output file"),
+            |guard| Ok(guard),
+        )?;
+        guard.insert(url_clone, output_path);
+        drop(guard);
+    }
+    res
 }
 
 pub async fn cut_video(
@@ -228,13 +245,16 @@ pub async fn cut_video(
         return Ok(());
     }
 
-    // first try to find the actual file path/name
-    // from the matching string we were given
-    // the issue is that we dont know the extension, but
-    // we can easily find it if theres only one file
-    // that matches the input_match
-    // TODO: dont assume we are in current dir...
-    let input_path = find_file_path_by_match(&split_request.input_match, ".").await?;
+    // previous step should have set the pathbuf of the file it
+    // created, so we get that to be able to run ffmpeg
+    // from the exact path of the input file
+    let input_path = match SOURCEHOLDER.lock() {
+        Err(_) => return Err("Failed to find input file".into()),
+        Ok(guard) => match guard.get(&url) {
+            None => return Err("Failed to find input file".into()),
+            Some(pathbuf) => pathbuf.clone(),
+        }
+    };
 
     let input_string = match input_path.to_str() {
         Some(s) => s.to_string(),
@@ -384,21 +404,35 @@ pub fn create_download_item(
         None => random_download_name(),
         Some(ref s) => s.clone(),
     };
-    let download_stage = make_stage!(download_video;
-        url.clone(),
-        name.clone(),
-    );
+
+    // if the url already has been downloaded
+    // we can skip the download stage
+    let url_already_downloaded = match SOURCEHOLDER.lock() {
+        Err(_) => false, // do nothing
+        Ok(guard) => guard.contains_key(&url),
+    };
+
     let cut_stage = make_stage!(cut_video;
-        url,
+        url.clone(),
         SplitRequest {
             start: download_request.start,
             duration: download_request.duration,
             output_prefix: "clipped.".into(),
-            input_match: name
+            input_match: name.clone(),
         }
     );
+
     let mut progitem = ProgressItem::new();
-    progitem.register_stage(download_stage);
+    if !url_already_downloaded {
+        let download_stage = make_stage!(download_video;
+            url,
+            name,
+        );
+        progitem.register_stage(download_stage);
+    }
+    // the download_stage only happens if we havent downloaded
+    // the video yet. in that case, it must happen
+    // BEFORE the cut stage... obviously
     progitem.register_stage(cut_stage);
     progitem
 }
