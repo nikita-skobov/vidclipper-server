@@ -501,32 +501,6 @@ pub fn start_download(
     }
 }
 
-pub fn url_exists_and_is_in_progress<S: AsRef<str>>(url: S) -> Result<bool, &'static str> {
-    match PROGHOLDER.lock() {
-        Err(_) => Err(FAILED_TO_ACQUIRE_LOCK),
-        Ok(mut guard) => {
-            match guard.progresses.get_mut(url.as_ref()) {
-                None => Ok(false),
-                Some(prog) => {
-                    if prog.get_progress_error().is_some() {
-                        return Ok(false);
-                    }
-                    // if it exists, but is not in error
-                    // then we also want to check if it is done
-                    // this has the effect of telling the user that
-                    // since we are done, you can go ahead
-                    // and remove/update this progress item
-                    // essentially this allows for destroying the
-                    // history of this progress item after its already done
-                    // TODO: consider alternatives... do I want to preserve
-                    // this history somehow?
-                    Ok(!prog.is_done())
-                }
-            }
-        }
-    }
-}
-
 pub fn get_time_string_from_line<S: AsRef<str>>(line: S) -> Option<String> {
     let line = line.as_ref();
     let time_str = "out_time_us=";
