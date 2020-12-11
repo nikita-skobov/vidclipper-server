@@ -14,7 +14,7 @@ use tokio::process::ChildStderr;
 use tokio::io::Lines;
 use tokio::fs;
 use tokio::io::{BufReader, AsyncBufReadExt};
-use std::{path::{PathBuf, Path}, process::Stdio};
+use std::{path::{PathBuf, Path}, process::Stdio, any::Any};
 
 #[path = "./youtubedl_stage.rs"]
 mod youtubedl_stage;
@@ -154,13 +154,12 @@ pub async fn cut_video(
     // previous step should have set the pathbuf of the file it
     // created, so we get that to be able to run ffmpeg
     // from the exact path of the input file
-    let input_path = match SOURCEHOLDER.lock() {
-        Err(_) => return Err("Failed to find input file".into()),
-        Ok(guard) => match guard.get(&url) {
-            None => return Err("Failed to find input file".into()),
-            Some(pathbuf) => pathbuf.clone(),
-        }
-    };
+    let input_path: Option<PathBuf> = return_something_from_progress_holder(&url, &PROGHOLDER, |me| {
+        me.clone_var::<PathBuf>("output_path")
+    });
+    let input_path = if input_path.is_none() {
+        return Err("Failed to find input file".into());
+    } else { input_path.unwrap() };
 
     let input_string = match input_path.to_str() {
         Some(s) => s.to_string(),
