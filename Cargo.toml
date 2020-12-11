@@ -20,3 +20,4 @@ progresslib2 = { path = "../progresslib2" }
 actix-cors = "0.5.3"
 actix-files = "0.4.1"
 rand = "0.7.3"
+progresslib2-server-extension = { path = "../progresslib2-server-extension" }
