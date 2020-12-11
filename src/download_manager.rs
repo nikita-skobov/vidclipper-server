@@ -14,7 +14,7 @@ use tokio::process::ChildStderr;
 use tokio::io::Lines;
 use tokio::fs;
 use tokio::io::{BufReader, AsyncBufReadExt};
-use std::{path::{PathBuf, Path}, process::Stdio, any::Any};
+use std::{path::{PathBuf, Path}, process::Stdio};
 
 #[path = "./youtubedl_stage.rs"]
 mod youtubedl_stage;
@@ -51,7 +51,6 @@ pub struct SplitRequest {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TranscodeRequest {
     pub transcode_extension: Option<String>,
-    pub clip_name_matching: String,
     pub duration: Option<u32>,
 }
 
@@ -265,7 +264,7 @@ pub async fn cut_video(
 
     handle_child_exit(child_status).map_or_else(
         |e| Err(e),
-        |o| {
+        |_| {
             let mut progvars = ProgressVars::default();
             progvars.insert_var("cut_video", Box::new(cut_video_outpath));
             Ok(Some(progvars))
@@ -428,17 +427,6 @@ pub async fn find_file_path_by_match<S: AsRef<str>, P: AsRef<Path>>(
     }
 }
 
-pub fn create_download_item2(
-    download_request: DownloadRequest
-) -> ProgressItem {
-    let progitem = ProgressItem::default();
-
-
-
-
-    progitem
-}
-
 pub fn create_download_item(
     key: &String,
     download_request: DownloadRequest,
@@ -462,7 +450,6 @@ pub fn create_download_item(
         key.clone(),
         TranscodeRequest {
             transcode_extension: download_request.transcode_extension,
-            clip_name_matching: output_clip_prefix.clone(),
             duration: download_request.duration,
         }
     );
