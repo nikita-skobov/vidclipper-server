@@ -57,12 +57,16 @@ pub struct TranscodeRequest {
 
 // TODO: dont iter over all alphanumeric, we only
 // want the lowercase ones...
-pub fn random_download_name() -> String {
+pub fn random_string(len: usize) -> String {
     rand::thread_rng()
         .sample_iter(&Alphanumeric)
-        .take(8)
+        .take(len)
         .collect::<String>()
         .to_lowercase()
+}
+
+pub fn random_download_name() -> String {
+    random_string(8)
 }
 
 /// provide an array/vec of string references where the first
@@ -416,6 +420,7 @@ pub fn create_download_item2(
 pub fn create_download_item(
     download_request: DownloadRequest,
 ) -> ProgressItem {
+    let unique_key = random_string(16);
     let url = download_request.url;
     let name = download_request.name;
     let name = match name {
@@ -451,10 +456,22 @@ pub fn create_download_item(
 
     let mut progitem = ProgressItem::new();
     if !url_already_downloaded {
-        let download_stage = make_stage!(download_video;
-            url,
-            name,
-        );
+        let download_task = async move {
+            let url_clone = url.clone();
+            let res = download_video(url, name).await;
+            if let Ok(Some(progvars)) = &res {
+                if let Some(path) = progvars.clone_var::<PathBuf>("output_path") {
+                    match SOURCEHOLDER.lock() {
+                        Err(_) => {} // do nothing :shrug:
+                        Ok(mut guard) => {
+                            guard.insert(url_clone, path);
+                        }
+                    }
+                }
+            }
+            res
+        };
+        let download_stage = Stage::make("download_video", download_task);
         progitem.register_stage(download_stage);
     }
     // the download_stage only happens if we havent downloaded

@@ -21,7 +21,6 @@ use super::setup_child_and_reader;
 use super::handle_child_exit;
 use super::find_file_path_by_match;
 use super::PROGHOLDER;
-use super::SOURCEHOLDER;
 
 /// reads a given line from the output of youtube-dl
 /// and parses it (very roughly and not perfectly)
