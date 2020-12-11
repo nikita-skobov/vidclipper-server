@@ -19,7 +19,7 @@ use std::{path::{PathBuf, Path}, process::Stdio};
 pub const FAILED_TO_ACQUIRE_LOCK: &'static str = "Failed to acquire lock";
 
 lazy_static! {
-    static ref PROGHOLDER: Mutex<ProgressHolder<String>> = Mutex::new(
+    pub static ref PROGHOLDER: Mutex<ProgressHolder<String>> = Mutex::new(
         ProgressHolder::<String>::default()
     );
     static ref SOURCEHOLDER: Mutex<HashMap<String, PathBuf>> = Mutex::new(
@@ -239,7 +239,7 @@ pub async fn download_video(
         guard.insert(url_clone, output_path);
         drop(guard);
     }
-    res
+    res.map_or_else(|e| Err(e), |_| Ok(None))
 }
 
 pub async fn cut_video(
@@ -249,7 +249,7 @@ pub async fn cut_video(
     if split_request.duration.is_none() && split_request.start.is_none() {
         // no point in running ffmpeg just to copy the existing streams
         // to a new file.
-        return Ok(());
+        return Ok(None);
     }
 
     // previous step should have set the pathbuf of the file it
@@ -359,7 +359,7 @@ pub async fn cut_video(
     // our TaskResult that is read by the progresslib2
     let child_status = child.await;
 
-    handle_child_exit(child_status)
+    handle_child_exit(child_status).map_or_else(|e| Err(e), |o| Ok(None))
 }
 
 pub async fn transcode_clip(
@@ -369,7 +369,7 @@ pub async fn transcode_clip(
     if transcode_request.transcode_extension.is_none() {
         // no point in running ffmpeg just to copy the existing streams
         // to a new file.
-        return Ok(());
+        return Ok(None);
     }
     let extension = transcode_request.transcode_extension.unwrap();
 
@@ -460,7 +460,7 @@ pub async fn transcode_clip(
     // our TaskResult that is read by the progresslib2
     let child_status = child.await;
 
-    handle_child_exit(child_status)
+    handle_child_exit(child_status).map_or_else(|e| Err(e), |_| Ok(None))
 }
 
 pub async fn find_file_path_by_match<S: AsRef<str>, P: AsRef<Path>>(
