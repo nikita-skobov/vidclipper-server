@@ -284,8 +284,21 @@ pub async fn transcode_clip(
     }
     let extension = transcode_request.transcode_extension.unwrap();
 
+    let input_path: Option<PathBuf> = return_something_from_progress_holder(&key, &PROGHOLDER, |me| {
+        me.clone_var::<PathBuf>("cut_video")
+    });
 
-    let mut input_path = find_file_path_by_match(&transcode_request.clip_name_matching, ".").await?;
+    let input_path = if input_path.is_none() {
+        // if there was no cut video, transcode
+        // from the source video instead
+        return_something_from_progress_holder(&key, &PROGHOLDER, |me| {
+            me.clone_var::<PathBuf>("original_download_path")
+        })
+    } else { input_path };
+
+    let mut input_path = if input_path.is_none() {
+        return Err("Failed to find input file".into());
+    } else { input_path.unwrap() };
 
     let input_string = match input_path.to_str() {
         Some(s) => s.to_string(),
