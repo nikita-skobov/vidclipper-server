@@ -53,6 +53,7 @@ pub fn get_ytdl_progress(line: &str) -> Option<u8> {
 }
 
 pub async fn download_video(
+    key: String,
     url: String,
     output_name: String,
 ) -> TaskResult {
@@ -86,7 +87,7 @@ pub async fn download_video(
                 if let None = prog_opt { continue; }
 
                 let progress = prog_opt.unwrap();
-                use_me_from_progress_holder(&url, &PROGHOLDER, |me| {
+                use_me_from_progress_holder(&key, &PROGHOLDER, |me| {
                     println!("setting progress to {}", progress);
                     me.inc_progress_percent(progress as f64);
                 });

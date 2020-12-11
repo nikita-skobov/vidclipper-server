@@ -146,7 +146,7 @@ pub fn handle_child_exit(
 }
 
 pub async fn cut_video(
-    url: String,
+    key: String,
     split_request: SplitRequest,
 ) -> TaskResult {
     if split_request.duration.is_none() && split_request.start.is_none() {
@@ -158,7 +158,7 @@ pub async fn cut_video(
     // previous step should have set the pathbuf of the file it
     // created, so we get that to be able to run ffmpeg
     // from the exact path of the input file
-    let input_path: Option<PathBuf> = return_something_from_progress_holder(&url, &PROGHOLDER, |me| {
+    let input_path: Option<PathBuf> = return_something_from_progress_holder(&key, &PROGHOLDER, |me| {
         me.clone_var::<PathBuf>("output_path")
     });
     let input_path = if input_path.is_none() {
@@ -248,7 +248,7 @@ pub async fn cut_video(
                 let mut progress = time_millis as f64 / duration_millis as f64;
                 if progress > 1.0 { progress = 1.0 };
                 println!("time_millis: {}, duration_millis: {}, progress: {}", time_millis, duration_millis, progress);
-                use_me_from_progress_holder(&url, &PROGHOLDER, |me| {
+                use_me_from_progress_holder(&key, &PROGHOLDER, |me| {
                     me.inc_progress_percent_normalized(progress);
                 });
             }
@@ -265,7 +265,7 @@ pub async fn cut_video(
 }
 
 pub async fn transcode_clip(
-    url: String,
+    key: String,
     transcode_request: TranscodeRequest,
 ) -> TaskResult {
     if transcode_request.transcode_extension.is_none() {
@@ -349,7 +349,7 @@ pub async fn transcode_clip(
                 let mut progress = time_millis as f64 / duration_millis as f64;
                 if progress > 1.0 { progress = 1.0 };
                 println!("time_millis: {}, duration_millis: {}, progress: {}", time_millis, duration_millis, progress);
-                use_me_from_progress_holder(&url, &PROGHOLDER, |me| {
+                use_me_from_progress_holder(&key, &PROGHOLDER, |me| {
                     me.inc_progress_percent_normalized(progress);
                 });
             }
@@ -418,9 +418,9 @@ pub fn create_download_item2(
 }
 
 pub fn create_download_item(
+    key: &String,
     download_request: DownloadRequest,
 ) -> ProgressItem {
-    let unique_key = random_string(16);
     let url = download_request.url;
     let name = download_request.name;
     let name = match name {
@@ -437,7 +437,7 @@ pub fn create_download_item(
 
     let output_clip_prefix = format!("clipped.{}.", name.clone());
     let transcode_stage = make_stage!(transcode_clip;
-        url.clone(),
+        key.clone(),
         TranscodeRequest {
             transcode_extension: download_request.transcode_extension,
             clip_name_matching: output_clip_prefix.clone(),
@@ -446,7 +446,7 @@ pub fn create_download_item(
     );
 
     let cut_stage = make_stage!(cut_video;
-        url.clone(),
+        key.clone(),
         SplitRequest {
             start: download_request.start,
             duration: download_request.duration,
@@ -456,16 +456,15 @@ pub fn create_download_item(
 
     let mut progitem = ProgressItem::new();
     if !url_already_downloaded {
+        let key_clone = key.clone();
+        let url_clone = url.clone();
         let download_task = async move {
-            let url_clone = url.clone();
-            let res = download_video(url, name).await;
+            let res = download_video(key_clone, url, name).await;
             if let Ok(Some(progvars)) = &res {
                 if let Some(path) = progvars.clone_var::<PathBuf>("output_path") {
                     match SOURCEHOLDER.lock() {
                         Err(_) => {} // do nothing :shrug:
-                        Ok(mut guard) => {
-                            guard.insert(url_clone, path);
-                        }
+                        Ok(mut guard) => { guard.insert(url_clone, path); },
                     }
                 }
             }
@@ -485,10 +484,8 @@ pub fn create_download_item(
 pub fn start_download(
     download_request: DownloadRequest
 ) -> Result<(), String>{
-    // since the url is required,
-    // the url will be treated as the key.
-    let url = download_request.url.clone();
-    let mut progitem = create_download_item(download_request);
+    let unique_key = random_string(16);
+    let mut progitem = create_download_item(&unique_key, download_request);
     match PROGHOLDER.lock() {
         Err(_) => Err(FAILED_TO_ACQUIRE_LOCK.into()),
         Ok(mut guard) => {
@@ -497,8 +494,8 @@ pub fn start_download(
             // but because it is currently under a lock, if the progress item tries
             // to use the progholder it will fail. Thats why internally, the progress item
             // uses try_lock to avoid blocking, and it has retry capabilities.
-            progitem.start(url.clone(), &PROGHOLDER);
-            guard.progresses.insert(url, progitem);
+            progitem.start(unique_key.clone(), &PROGHOLDER);
+            guard.progresses.insert(unique_key, progitem);
             Ok(())
         }
     }
