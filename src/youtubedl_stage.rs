@@ -69,7 +69,6 @@ pub async fn download_video(
     ];
     println!("args: {:#?}", exe_and_args);
     let cmd = create_command(&exe_and_args[..]);
-    let url_clone = url.clone(); // needed for output
 
     // create a reader from the stdout handle we created
     // pass that reader into the following future spawned on tokio
@@ -114,17 +113,18 @@ pub async fn download_video(
     // our TaskResult that is read by the progresslib2
     let child_status = child.await;
     let res = handle_child_exit(child_status);
+    let mut progvars = ProgressVars::default();
     if res.is_ok() {
         // say that we have downloaded this url
-        // at the location
+        // at the location. this gets put into
+        // the progress vars so the next stage can read it
+        // if necessary
         // TODO: dont assume current directory
         let output_path = find_file_path_by_match(&output_name, ".").await?;
-        let mut guard = SOURCEHOLDER.lock().map_or_else(
-            |_| Err("Failed to save output file"),
-            |guard| Ok(guard),
-        )?;
-        guard.insert(url_clone, output_path);
-        drop(guard);
+        progvars.insert_var(
+            "output_path",
+            Box::new(output_path)
+        );
     }
-    res.map_or_else(|e| Err(e), |_| Ok(None))
+    res.map_or_else(|e| Err(e), |_| Ok(Some(progvars)))
 }
