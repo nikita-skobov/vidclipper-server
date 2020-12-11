@@ -122,7 +122,7 @@ pub async fn download_video(
         // TODO: dont assume current directory
         let output_path = find_file_path_by_match(&output_name, ".").await?;
         progvars.insert_var(
-            "output_path",
+            "original_download_path",
             Box::new(output_path)
         );
     }

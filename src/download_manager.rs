@@ -159,8 +159,9 @@ pub async fn cut_video(
     // created, so we get that to be able to run ffmpeg
     // from the exact path of the input file
     let input_path: Option<PathBuf> = return_something_from_progress_holder(&key, &PROGHOLDER, |me| {
-        me.clone_var::<PathBuf>("output_path")
+        me.clone_var::<PathBuf>("original_download_path")
     });
+
     let input_path = if input_path.is_none() {
         return Err("Failed to find input file".into());
     } else { input_path.unwrap() };
@@ -186,6 +187,7 @@ pub async fn cut_video(
         },
     };
     let output_file_name = format!("{}{}", split_request.output_prefix, original_file_name);
+    let cut_video_outpath = PathBuf::from(&output_file_name);
 
     let mut exe_and_args = vec![
         "ffmpeg".into(),
@@ -261,7 +263,14 @@ pub async fn cut_video(
     // our TaskResult that is read by the progresslib2
     let child_status = child.await;
 
-    handle_child_exit(child_status).map_or_else(|e| Err(e), |o| Ok(None))
+    handle_child_exit(child_status).map_or_else(
+        |e| Err(e),
+        |o| {
+            let mut progvars = ProgressVars::default();
+            progvars.insert_var("cut_video", Box::new(cut_video_outpath));
+            Ok(Some(progvars))
+        },
+    )
 }
 
 pub async fn transcode_clip(
@@ -461,7 +470,7 @@ pub fn create_download_item(
         let download_task = async move {
             let res = download_video(key_clone, url, name).await;
             if let Ok(Some(progvars)) = &res {
-                if let Some(path) = progvars.clone_var::<PathBuf>("output_path") {
+                if let Some(path) = progvars.clone_var::<PathBuf>("original_download_path") {
                     match SOURCEHOLDER.lock() {
                         Err(_) => {} // do nothing :shrug:
                         Ok(mut guard) => { guard.insert(url_clone, path); },
