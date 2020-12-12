@@ -440,9 +440,12 @@ pub fn create_download_item(
 
     // if the url already has been downloaded
     // we can skip the download stage
-    let url_already_downloaded = match SOURCEHOLDER.lock() {
-        Err(_) => false, // do nothing
-        Ok(guard) => guard.contains_key(&url),
+    let url_exists_at = match SOURCEHOLDER.lock() {
+        Err(_) => None, // do nothing
+        Ok(mut guard) => match guard.get_mut(&url) {
+            Some(path) => Some(path.to_owned()),
+            None => None
+        }
     };
 
     let output_clip_prefix = format!("clipped.{}.", name.clone());
@@ -464,7 +467,7 @@ pub fn create_download_item(
     );
 
     let mut progitem = ProgressItem::new();
-    if !url_already_downloaded {
+    if let None = url_exists_at {
         let key_clone = key.clone();
         let url_clone = url.clone();
         let download_task = async move {
@@ -481,7 +484,13 @@ pub fn create_download_item(
         };
         let download_stage = Stage::make("download_video", download_task);
         progitem.register_stage(download_stage);
+    } else if let Some(original_download_path) = url_exists_at {
+        // if the url does already exist, we want to
+        // put a variable of the path where the other steps
+        // can find this url
+        progitem.insert_var("original_download_path", Box::new(original_download_path));
     }
+
     // the download_stage only happens if we havent downloaded
     // the video yet. in that case, it must happen
     // BEFORE the cut stage... obviously
