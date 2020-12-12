@@ -3,8 +3,9 @@ use progresslib2::*;
 use super::create_command;
 use super::setup_child_and_reader;
 use super::handle_child_exit;
-use super::find_file_path_by_match;
+use super::find_file_paths_matching;
 use super::PROGHOLDER;
+use std::path::PathBuf;
 
 /// reads a given line from the output of youtube-dl
 /// and parses it (very roughly and not perfectly)
@@ -43,13 +44,16 @@ pub async fn download_video(
     let key_clone = key.clone();
     // form the command via all of the args it needs
     // and do basic spawn error checking
+    let output_format = format!("{}.%(ext)s", &key);
     let exe_and_args = vec![
         "youtube-dl",
         "--newline",
         "--ignore-config",
+        "--write-info-json",
+        "--write-thumbnail",
         &url,
         "-o",
-        &key,
+        &output_format,
     ];
     println!("args: {:#?}", exe_and_args);
     let cmd = create_command(&exe_and_args[..]);
@@ -103,12 +107,98 @@ pub async fn download_video(
         // at the location. this gets put into
         // the progress vars so the next stage can read it
         // if necessary
-        // TODO: dont assume current directory
-        let output_path = find_file_path_by_match(&key_clone, ".").await?;
+        let (
+            output_path,
+            mut info_json_path,
+            mut thumbnail_path
+        ) = get_downloaded_paths(&key_clone).await?;
+
         progvars.insert_var(
             "original_download_path",
             Box::new(output_path)
         );
+        if let Some(info_path) = info_json_path.take() {
+            // TODO: read json file (asynchronously!)
+            // and add variables to progress item about the
+            // title, description, etc.
+        }
+        if let Some(thumbnail_path) = thumbnail_path.take() {
+            progvars.insert_var(
+                "original_thumbnail_path",
+                Box::new(thumbnail_path)
+            );
+        }
     }
     res.map_or_else(|e| Err(e), |_| Ok(Some(progvars)))
+}
+
+// TODO: add more?
+pub const VALID_THUMBNAIL_EXTENSIONS: [&str; 9] = [
+    "jpg", "jpeg", "png", "JPG", "JPEG", "PNG", "webp",
+    "gif", "bmp"
+];
+pub const VALID_VIDEO_EXTENSIONS: [&str; 10] = [
+    "mp4", "mkv", "ts", "webm", "avi", "mov", "qt", "vob",
+    "3gp", "wmv"
+];
+
+pub async fn get_downloaded_paths<S: AsRef<str>>(
+    matching: S
+) -> Result<(PathBuf, Option<PathBuf>, Option<PathBuf>), String> {
+    // TODO: dont assume current directory
+    let output_paths = find_file_paths_matching(matching, ".").await?;
+    get_downloaded_paths_from_vec(output_paths)
+}
+
+pub fn get_downloaded_paths_from_vec(
+    output_paths: Vec<PathBuf>
+) -> Result<(PathBuf, Option<PathBuf>, Option<PathBuf>), String> {
+    let mut output_path = None;
+    let mut info_json_path = None;
+    let mut thumbnail_path = None;
+    for path in output_paths {
+        if let Some(os_ext) = path.extension() {
+            // we know this one is the info_json path
+            if os_ext == "json" && info_json_path.is_none() {
+                info_json_path = Some(path);
+            } else if VALID_THUMBNAIL_EXTENSIONS.iter().any(|e| *e == os_ext) && thumbnail_path.is_none() {
+                thumbnail_path = Some(path);
+            } else if VALID_VIDEO_EXTENSIONS.iter().any(|e| *e == os_ext) && output_path.is_none() {
+                output_path = Some(path);
+            }
+        }
+    }
+
+    if let Some(path) = output_path.take() {
+        return Ok((
+            path,
+            info_json_path,
+            thumbnail_path
+        ));
+    }
+
+    Err("Failed to find output path after download".into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn get_paths_after_download_works() {
+        let output_paths = vec![
+            "vid.info.json".into(),
+            "vid.mp4".into(),
+            "vid.jpg".into()
+        ];
+        let (
+            output_path,
+            info_path,
+            thumbnail_path
+        ) = get_downloaded_paths_from_vec(output_paths).unwrap();
+
+        assert!(output_path.to_str().unwrap().contains("vid.mp4"));
+        assert!(info_path.unwrap().to_str().unwrap().contains("vid.info.json"));
+        assert!(thumbnail_path.unwrap().to_str().unwrap().contains("vid.jpg"));
+    }
 }
