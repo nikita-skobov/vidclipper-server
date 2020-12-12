@@ -8,7 +8,10 @@ use serde::{Deserialize, Serialize};
 pub struct DownloadedVideo {
     pub location: PathBuf,
     pub thumbnail_location: Option<PathBuf>,
+    pub title: Option<String>,
+    pub description: Option<String>,
 }
+
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct DownloadedVideos {
     #[serde(flatten)]

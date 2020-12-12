@@ -230,6 +230,8 @@ pub fn create_download_item(
             if let Ok(Some(progvars)) = &res {
                 let original_download_path = progvars.clone_var::<PathBuf>("original_download_path");
                 let original_thumbnail_path = progvars.clone_var::<PathBuf>("original_thumbnail_path");
+                let ytdl_title = progvars.clone_var::<String>("ytdl_title");
+                let ytdl_description = progvars.clone_var::<String>("ytdl_description");
                 if original_download_path.is_some() {
                     should_write_data_store = true;
                     match DATAHOLDER.lock() {
@@ -238,6 +240,8 @@ pub fn create_download_item(
                             guard.as_mut().insert(url_clone, DownloadedVideo {
                                 location: original_download_path.unwrap(),
                                 thumbnail_location: original_thumbnail_path,
+                                title: ytdl_title,
+                                description: ytdl_description,
                             });
                         }
                     }

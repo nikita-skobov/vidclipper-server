@@ -5,6 +5,7 @@ use super::setup_child_and_reader;
 use super::handle_child_exit;
 use super::find_file_paths_matching;
 use super::PROGHOLDER;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 /// reads a given line from the output of youtube-dl
@@ -120,9 +121,19 @@ pub async fn download_video(
         );
         if let Some(info_path) = info_json_path.take() {
             println!("got info path: {:?}", info_path);
-            // TODO: read json file (asynchronously!)
-            // and add variables to progress item about the
-            // title, description, etc.
+            let mut ytdl_metadata = extract_metadata(&info_path).await;
+            if let Some(description) = ytdl_metadata.description.take() {
+                progvars.insert_var(
+                    "ytdl_description",
+                    Box::new(description)
+                );
+            }
+            if let Some(title) = ytdl_metadata.title.take() {
+                progvars.insert_var(
+                    "ytdl_title",
+                    Box::new(title)
+                );
+            }
         }
         if let Some(thumbnail_path) = thumbnail_path.take() {
             println!("got thumbnail path: {:?}", thumbnail_path);
@@ -144,6 +155,31 @@ pub const VALID_VIDEO_EXTENSIONS: [&str; 10] = [
     "mp4", "mkv", "ts", "webm", "avi", "mov", "qt", "vob",
     "3gp", "wmv"
 ];
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct YtDlMetadata {
+    pub description: Option<String>,
+    pub title: Option<String>,
+}
+
+/// asynchronously read the info.json file
+/// and then try to extract a few properties of
+/// interest. always delete the file after extraction
+/// because we dont need it afterwards
+pub async fn extract_metadata(path: &PathBuf) -> YtDlMetadata {
+    let json_string = match tokio::fs::read_to_string(path).await {
+        Ok(s) => s,
+        Err(_) => "{}".into(),
+    };
+
+    let metadata: YtDlMetadata = serde_json::from_str(&json_string).map_or_else(
+        |_| YtDlMetadata::default(), |o| o);
+
+    // before returning metadata, delete the file
+    // to avoid clutter
+    let _ = tokio::fs::remove_file(path).await;
+    metadata
+}
 
 pub async fn get_downloaded_paths<S: AsRef<str>>(
     matching: S
