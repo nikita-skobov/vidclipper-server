@@ -14,7 +14,7 @@ use tokio::process::ChildStderr;
 use tokio::io::Lines;
 use tokio::fs;
 use tokio::io::{BufReader, AsyncBufReadExt};
-use std::{path::{PathBuf, Path}, process::Stdio};
+use std::{path::{PathBuf, Path}, process::Stdio, fmt::Display};
 
 #[path = "./youtubedl_stage.rs"]
 mod youtubedl_stage;
@@ -28,6 +28,11 @@ use cut_video_stage::cut_video;
 mod transcode_clip_stage;
 use transcode_clip_stage::transcode_clip;
 
+#[path = "./data_store.rs"]
+mod data_store;
+use data_store::initialize_data;
+use data_store::DownloadedVideos;
+
 pub const FAILED_TO_ACQUIRE_LOCK: &'static str = "Failed to acquire lock";
 
 lazy_static! {
@@ -37,6 +42,11 @@ lazy_static! {
     static ref SOURCEHOLDER: Mutex<HashMap<String, PathBuf>> = Mutex::new(
         HashMap::new()
     );
+    static ref DATAHOLDER: Mutex<DownloadedVideos> = Mutex::new(DownloadedVideos::default());
+}
+
+pub fn string_error(e: impl Display) -> String {
+    format!("{}", e)
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -303,6 +313,19 @@ pub fn get_millis_from_time_string<S: AsRef<str>>(time_string: S) -> Option<u32>
     let time_string = time_string.as_ref();
     let micros = time_string.parse::<u64>().ok()?;
     Some(micros as u32 / 1000)
+}
+
+pub fn initialize() -> Result<(), String> {
+    let mut data = initialize_data("vidclipper_data.json")?;
+    let mut guard = DATAHOLDER.lock().map_err(string_error)?;
+
+    let data_map = data.as_mut();
+    let downloaded_videos_map = guard.as_mut();
+
+    for (key, value) in data_map.drain() {
+        downloaded_videos_map.insert(key, value);
+    }
+    Ok(())
 }
 
 #[cfg(test)]
