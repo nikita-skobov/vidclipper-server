@@ -113,16 +113,19 @@ pub async fn download_video(
             mut thumbnail_path
         ) = get_downloaded_paths(&key_clone).await?;
 
+        println!("got output path: {:?}", output_path);
         progvars.insert_var(
             "original_download_path",
             Box::new(output_path)
         );
         if let Some(info_path) = info_json_path.take() {
+            println!("got info path: {:?}", info_path);
             // TODO: read json file (asynchronously!)
             // and add variables to progress item about the
             // title, description, etc.
         }
         if let Some(thumbnail_path) = thumbnail_path.take() {
+            println!("got thumbnail path: {:?}", thumbnail_path);
             progvars.insert_var(
                 "original_thumbnail_path",
                 Box::new(thumbnail_path)

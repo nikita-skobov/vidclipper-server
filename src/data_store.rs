@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct DownloadedVideo {
     pub location: PathBuf,
+    pub thumbnail_location: Option<PathBuf>,
 }
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct DownloadedVideos {
@@ -68,8 +69,8 @@ mod tests {
     fn can_load_json_data() {
         let json_string = r#"
         {
-            "a": { "url": "xyz", "location": "./" },
-            "b": { "url": "qqq", "location": "qqq.txt" }
+            "a": { "url": "xyz", "location": "./", "thumbnail_location": "./" },
+            "b": { "url": "qqq", "location": "qqq.txt", "thumbnail_location": "./" }
         }
         "#;
 

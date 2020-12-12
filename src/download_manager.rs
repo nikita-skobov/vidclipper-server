@@ -226,28 +226,36 @@ pub fn create_download_item(
         let url_clone = url.clone();
         let download_task = async move {
             let res = download_video(key_clone, url).await;
+            let mut should_write_data_store = false;
             if let Ok(Some(progvars)) = &res {
-                if let Some(path) = progvars.clone_var::<PathBuf>("original_download_path") {
+                let original_download_path = progvars.clone_var::<PathBuf>("original_download_path");
+                let original_thumbnail_path = progvars.clone_var::<PathBuf>("original_thumbnail_path");
+                if original_download_path.is_some() {
+                    should_write_data_store = true;
                     match DATAHOLDER.lock() {
-                        Err(_) => {}, // do nothing :shrug:
+                        Err(_) => {} // do nothing :shrug:
                         Ok(mut guard) => {
                             guard.as_mut().insert(url_clone, DownloadedVideo {
-                                location: path,
+                                location: original_download_path.unwrap(),
+                                thumbnail_location: original_thumbnail_path,
                             });
                         }
                     }
-                    // write the data back to json
-                    // after this stage returns. no point for the
-                    // progress to wait for this to finish
-                    tokio::spawn(async move {
-                        match DATAHOLDER.lock() {
-                            Err(_) => {},
-                            Ok(guard) => {
-                                let _ = data_store::write_json_data(DATA_STORE_PATH, &guard);
-                            },
-                        }
-                    });
                 }
+            }
+
+            if should_write_data_store {
+                // write the data back to json
+                // after this stage returns. no point for the
+                // progress to wait for this to finish
+                tokio::spawn(async move {
+                    match DATAHOLDER.lock() {
+                        Err(_) => {},
+                        Ok(guard) => {
+                            let _ = data_store::write_json_data(DATA_STORE_PATH, &guard);
+                        },
+                    }
+                });
             }
             res
         };
