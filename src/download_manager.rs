@@ -300,6 +300,26 @@ pub fn start_download(
     }
 }
 
+pub fn list_all_downloaded_videos(
+) -> Result<Vec<(String, DownloadedVideo)>, String> {
+    let mut downloaded_map_clone = match DATAHOLDER.lock() {
+        Err(_) => return Err(FAILED_TO_ACQUIRE_LOCK.into()),
+        Ok(guard) => {
+            // its probably faster to clone here
+            // and iterate after the lock is done
+            // than to iterate here?
+            guard.clone()
+        },
+    };
+
+    let mut out_vec = vec![];
+    for (key, value) in downloaded_map_clone.as_mut().drain() {
+        out_vec.push((key, value));
+    }
+
+    Ok(out_vec)
+}
+
 pub fn get_time_string_from_line<S: AsRef<str>>(line: S) -> Option<String> {
     let line = line.as_ref();
     let time_str = "out_time_us=";

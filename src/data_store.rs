@@ -4,7 +4,7 @@ use std::{fmt::Display, fs::File, collections::HashMap};
 use serde::{Deserialize, Serialize};
 
 
-#[derive(Default, Debug, Serialize, Deserialize)]
+#[derive(Clone, Default, Debug, Serialize, Deserialize)]
 pub struct DownloadedVideo {
     pub location: PathBuf,
     pub thumbnail_location: Option<PathBuf>,
@@ -12,7 +12,7 @@ pub struct DownloadedVideo {
     pub description: Option<String>,
 }
 
-#[derive(Default, Debug, Serialize, Deserialize)]
+#[derive(Clone, Default, Debug, Serialize, Deserialize)]
 pub struct DownloadedVideos {
     #[serde(flatten)]
     videos: HashMap<String, DownloadedVideo>,
