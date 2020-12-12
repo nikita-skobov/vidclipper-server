@@ -145,31 +145,39 @@ pub fn handle_child_exit(
     }
 }
 
-pub async fn find_file_path_by_match<S: AsRef<str>, P: AsRef<Path>>(
+pub async fn find_file_paths_matching<S: AsRef<str>, P: AsRef<Path>>(
     matching: S,
     path: P,
-) -> Result<PathBuf, String> {
+) -> Result<Vec<PathBuf>, String> {
     let readdir = fs::read_dir(path).await;
     let mut readdir_entries = readdir.map_err(
         |e| fmt_string_error("Failed to read dir", e))?;
 
+    let mut out_vec = vec![];
     loop {
         let direntry_opt = readdir_entries.next_entry().await.map_err(
             |e| fmt_string_error("Failed to iterate over dir", e))?;
 
         // I think if direntry_opt is None then this
         // means we read all files in this directory?
-        let direntry = direntry_opt.map_or_else(
-            || Err(fmt_string_error("Failed to find file matching", matching.as_ref())),
-            |d| Ok(d))?;
+        let direntry = match direntry_opt {
+            Some(d) => d,
+            None => {
+                if out_vec.len() == 0 {
+                    return Err(format!("Failed to find anything matching {}", matching.as_ref()));
+                }
+                return Ok(out_vec);
+            },
+        };
 
         let file_name = direntry.file_name().to_str().map_or_else(
             || Err("Dir entry contains invalid characters"),
             |s| Ok(s.to_string()))?;
 
         if file_name.contains(matching.as_ref()) {
-            // found the match
-            return Ok(direntry.path());
+            out_vec.push(direntry.path());
+            // // found the match
+            // return Ok(direntry.path());
         }
     }
 }
@@ -324,11 +332,16 @@ mod test {
     fn find_file_path_by_match_works() {
         let mut rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async move {
-            let res = find_file_path_by_match("Cargo", ".").await;
+            let res = find_file_paths_matching("Cargo", ".").await;
             match res {
-                Ok(s) => {
-                    let s = s.to_str().unwrap();
-                    assert!(s.contains("Cargo.toml"))
+                Ok(pathvec) => {
+                    assert!(pathvec.len() == 2);
+                    let s1 = &pathvec[0];
+                    let s2 = &pathvec[1];
+                    assert!(
+                        s1.to_str().unwrap().contains("Cargo.toml") ||
+                        s2.to_str().unwrap().contains("Cargo.toml")
+                    );
                 },
                 Err(_) => assert!(false)
             }
