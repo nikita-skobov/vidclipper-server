@@ -48,6 +48,10 @@ pub fn string_error(e: impl Display) -> String {
     format!("{}", e)
 }
 
+pub fn fmt_string_error<S: AsRef<str>>(s: S, e: impl Display) -> String {
+    format!("{}: {}", s.as_ref(), e)
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DownloadRequest {
     pub url: String,
@@ -107,27 +111,14 @@ pub fn setup_child_and_reader(
     cmd: Command,
 ) -> Result<(Child, Lines<BufReader<ChildStdout>>, Lines<BufReader<ChildStderr>>), String> {
     let mut cmd = cmd;
-    let mut child = match cmd.spawn() {
-        Ok(c) => c,
-        Err(e) => {
-            let error_string = format!("Failed to spawn child process: {}", e);
-            return Err(error_string);
-        }
-    };
-    let stdout = match child.stdout.take() {
-        Some(s) => s,
-        None => {
-            let error_string = format!("Failed to get handle child process stdout");
-            return Err(error_string);
-        }
-    };
-    let stderr = match child.stderr.take() {
-        Some(s) => s,
-        None => {
-            let error_string = format!("Failed to get handle child process stderr");
-            return Err(error_string);
-        }
-    };
+    let mut child = cmd.spawn().map_err(
+        |e| fmt_string_error("Failed to spawn child process", e))?;
+    let stdout = child.stdout.take().map_or_else(
+        || Err("Failed to get handle child process stdout"),
+        |o| Ok(o))?;
+    let stderr = child.stderr.take().map_or_else(
+        || Err("Failed to get handle child process stderr"),
+        |o| Ok(o))?;
     // create a reader from the handles we created
     let reader_stdout = BufReader::new(stdout).lines();
     let reader_stderr = BufReader::new(stderr).lines();
@@ -137,13 +128,8 @@ pub fn setup_child_and_reader(
 pub fn handle_child_exit(
     child_status: Result<ExitStatus, Error>
 ) -> Result<(), String> {
-    let status = match child_status {
-        Ok(s) => s,
-        Err(e) => {
-            let error_string = format!("child process encountered an error: {}", e);
-            return Err(error_string);
-        }
-    };
+    let status = child_status.map_err(
+        |e| fmt_string_error("child process encountered an error", e))?;
 
     match status.success() {
         true => Ok(()),
@@ -164,38 +150,26 @@ pub async fn find_file_path_by_match<S: AsRef<str>, P: AsRef<Path>>(
     path: P,
 ) -> Result<PathBuf, String> {
     let readdir = fs::read_dir(path).await;
-    let mut readdir_entries = match readdir {
-        Err(e) => {
-            let error_string = format!("Failed to read dir: {}", e);
-            return Err(error_string);
-        }
-        Ok(entries) => entries,
-    };
+    let mut readdir_entries = readdir.map_err(
+        |e| fmt_string_error("Failed to read dir", e))?;
 
     loop {
-        match readdir_entries.next_entry().await {
-            Err(e) => {
-                let error_string = format!("Failed to iterate over dir: {}", e);
-                return Err(error_string);
-            }
-            Ok(direntry_opt) => match direntry_opt {
-                None => {
-                    // I think this means we read
-                    // all files in this directory?
-                    let error_string = format!("Failed to find file matching {}", matching.as_ref());
-                    return Err(error_string);
-                }
-                Some(direntry) => {
-                    let file_name = match direntry.file_name().to_str() {
-                        Some(s) => s.to_string(),
-                        None => return Err("Dir entry contains invalid characters".into()),
-                    };
-                    if file_name.contains(matching.as_ref()) {
-                        // found the match
-                        return Ok(direntry.path());
-                    }
-                }
-            }
+        let direntry_opt = readdir_entries.next_entry().await.map_err(
+            |e| fmt_string_error("Failed to iterate over dir", e))?;
+
+        // I think if direntry_opt is None then this
+        // means we read all files in this directory?
+        let direntry = direntry_opt.map_or_else(
+            || Err(fmt_string_error("Failed to find file matching", matching.as_ref())),
+            |d| Ok(d))?;
+
+        let file_name = direntry.file_name().to_str().map_or_else(
+            || Err("Dir entry contains invalid characters"),
+            |s| Ok(s.to_string()))?;
+
+        if file_name.contains(matching.as_ref()) {
+            // found the match
+            return Ok(direntry.path());
         }
     }
 }
