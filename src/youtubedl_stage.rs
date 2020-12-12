@@ -39,8 +39,8 @@ pub fn get_ytdl_progress(line: &str) -> Option<u8> {
 pub async fn download_video(
     key: String,
     url: String,
-    output_name: String,
 ) -> TaskResult {
+    let key_clone = key.clone();
     // form the command via all of the args it needs
     // and do basic spawn error checking
     let exe_and_args = vec![
@@ -49,7 +49,7 @@ pub async fn download_video(
         "--ignore-config",
         &url,
         "-o",
-        &output_name,
+        &key,
     ];
     println!("args: {:#?}", exe_and_args);
     let cmd = create_command(&exe_and_args[..]);
@@ -104,7 +104,7 @@ pub async fn download_video(
         // the progress vars so the next stage can read it
         // if necessary
         // TODO: dont assume current directory
-        let output_path = find_file_path_by_match(&output_name, ".").await?;
+        let output_path = find_file_path_by_match(&key_clone, ".").await?;
         progvars.insert_var(
             "original_download_path",
             Box::new(output_path)

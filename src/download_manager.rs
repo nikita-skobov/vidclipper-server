@@ -52,7 +52,6 @@ pub struct DownloadRequest {
 pub struct SplitRequest {
     pub start: Option<u32>,
     pub duration: Option<u32>,
-    pub output_prefix: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -199,7 +198,7 @@ pub fn create_download_item(
     let url = download_request.url;
     let name = download_request.name;
     let name = match name {
-        None => random_download_name(),
+        None => format!("clip.{}", &key),
         Some(ref s) => s.clone(),
     };
 
@@ -213,7 +212,6 @@ pub fn create_download_item(
         }
     };
 
-    let output_clip_prefix = format!("clipped.{}.", name.clone());
     let transcode_stage = make_stage!(transcode_clip;
         key.clone(),
         TranscodeRequest {
@@ -224,10 +222,10 @@ pub fn create_download_item(
 
     let cut_stage = make_stage!(cut_video;
         key.clone(),
+        name,
         SplitRequest {
             start: download_request.start,
             duration: download_request.duration,
-            output_prefix: output_clip_prefix,
         }
     );
 
@@ -236,7 +234,7 @@ pub fn create_download_item(
         let key_clone = key.clone();
         let url_clone = url.clone();
         let download_task = async move {
-            let res = download_video(key_clone, url, name).await;
+            let res = download_video(key_clone, url).await;
             if let Ok(Some(progvars)) = &res {
                 if let Some(path) = progvars.clone_var::<PathBuf>("original_download_path") {
                     match SOURCEHOLDER.lock() {

@@ -25,6 +25,11 @@ pub async fn transcode_clip(
         me.clone_var::<PathBuf>("cut_video")
     });
 
+    let mut should_delete = match &input_path {
+        Some(ref p) => Some(p.to_owned()),
+        None => None
+    };
+
     let input_path = if input_path.is_none() {
         // if there was no cut video, transcode
         // from the source video instead
@@ -58,6 +63,12 @@ pub async fn transcode_clip(
             }
         },
     };
+
+    // dont delete the input file after transcoding
+    // if they have the same extension
+    if input_string == output_file_name {
+        should_delete = None;
+    }
 
     let mut exe_and_args = vec![
         "ffmpeg".into(),
@@ -121,5 +132,13 @@ pub async fn transcode_clip(
     // our TaskResult that is read by the progresslib2
     let child_status = child.await;
 
-    handle_child_exit(child_status).map_or_else(|e| Err(e), |_| Ok(None))
+    handle_child_exit(child_status).map_or_else(
+        |e| Err(e),
+        |_| {
+            if let Some(path_to_delete) = should_delete {
+                let _ = std::fs::remove_file(path_to_delete);
+            }
+            Ok(None)
+        }
+    )
 }

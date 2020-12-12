@@ -14,14 +14,9 @@ use super::ProgressVars;
 
 pub async fn cut_video(
     key: String,
+    output_file_name: String,
     split_request: SplitRequest,
 ) -> TaskResult {
-    if split_request.duration.is_none() && split_request.start.is_none() {
-        // no point in running ffmpeg just to copy the existing streams
-        // to a new file.
-        return Ok(None);
-    }
-
     // previous step should have set the pathbuf of the file it
     // created, so we get that to be able to run ffmpeg
     // from the exact path of the input file
@@ -40,21 +35,20 @@ pub async fn cut_video(
             return Err(error_string);
         }
     };
-    let original_file_name = match input_path.file_name() {
+
+    let input_extension = input_path.extension().map_or_else(
+        || None, |o| o.to_str()
+    ).map_or_else(|| "mkv", |o| o);
+
+    // output should have same extension as input
+    let mut cut_video_outpath = PathBuf::from(&output_file_name);
+    cut_video_outpath.set_extension(input_extension);
+    let output_file_name = match cut_video_outpath.to_str() {
+        Some(o) => o.to_string(),
         None => {
-            let error_string = format!("File path contains invalid characters: {:?}", input_path);
-            return Err(error_string);
-        },
-        Some(os_str) => match os_str.to_str() {
-            Some(s) => s.to_string(),
-            None => {
-                let error_string = format!("File path contains invalid characters: {:?}", os_str);
-                return Err(error_string);
-            }
-        },
+            return Err(format!("Failed to create output clip"));
+        }
     };
-    let output_file_name = format!("{}{}", split_request.output_prefix, original_file_name);
-    let cut_video_outpath = PathBuf::from(&output_file_name);
 
     let mut exe_and_args = vec![
         "ffmpeg".into(),
