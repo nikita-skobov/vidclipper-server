@@ -32,15 +32,14 @@ use transcode_clip_stage::transcode_clip;
 mod data_store;
 use data_store::initialize_data;
 use data_store::DownloadedVideos;
+use data_store::DownloadedVideo;
 
 pub const FAILED_TO_ACQUIRE_LOCK: &'static str = "Failed to acquire lock";
+pub const DATA_STORE_PATH: &'static str = "vidclipper_data.json";
 
 lazy_static! {
     pub static ref PROGHOLDER: Mutex<ProgressHolder<String>> = Mutex::new(
         ProgressHolder::<String>::default()
-    );
-    static ref SOURCEHOLDER: Mutex<HashMap<String, PathBuf>> = Mutex::new(
-        HashMap::new()
     );
     static ref DATAHOLDER: Mutex<DownloadedVideos> = Mutex::new(DownloadedVideos::default());
 }
@@ -214,10 +213,10 @@ pub fn create_download_item(
 
     // if the url already has been downloaded
     // we can skip the download stage
-    let url_exists_at = match SOURCEHOLDER.lock() {
+    let url_exists_at = match DATAHOLDER.lock() {
         Err(_) => None, // do nothing
-        Ok(mut guard) => match guard.get_mut(&url) {
-            Some(path) => Some(path.to_owned()),
+        Ok(mut guard) => match guard.as_mut().get_mut(&url) {
+            Some(path) => Some(path.location.to_owned()),
             None => None
         }
     };
@@ -247,10 +246,25 @@ pub fn create_download_item(
             let res = download_video(key_clone, url).await;
             if let Ok(Some(progvars)) = &res {
                 if let Some(path) = progvars.clone_var::<PathBuf>("original_download_path") {
-                    match SOURCEHOLDER.lock() {
-                        Err(_) => {} // do nothing :shrug:
-                        Ok(mut guard) => { guard.insert(url_clone, path); },
+                    match DATAHOLDER.lock() {
+                        Err(_) => {}, // do nothing :shrug:
+                        Ok(mut guard) => {
+                            guard.as_mut().insert(url_clone, DownloadedVideo {
+                                location: path,
+                            });
+                        }
                     }
+                    // write the data back to json
+                    // after this stage returns. no point for the
+                    // progress to wait for this to finish
+                    tokio::spawn(async move {
+                        match DATAHOLDER.lock() {
+                            Err(_) => {},
+                            Ok(guard) => {
+                                let _ = data_store::write_json_data(DATA_STORE_PATH, &guard);
+                            },
+                        }
+                    });
                 }
             }
             res
@@ -316,7 +330,7 @@ pub fn get_millis_from_time_string<S: AsRef<str>>(time_string: S) -> Option<u32>
 }
 
 pub fn initialize() -> Result<(), String> {
-    let mut data = initialize_data("vidclipper_data.json")?;
+    let mut data = initialize_data(DATA_STORE_PATH)?;
     let mut guard = DATAHOLDER.lock().map_err(string_error)?;
 
     let data_map = data.as_mut();

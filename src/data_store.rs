@@ -6,8 +6,6 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct DownloadedVideo {
-    pub url: String,
-    pub name: String,
     pub location: PathBuf,
 }
 #[derive(Default, Debug, Serialize, Deserialize)]
@@ -43,6 +41,15 @@ pub fn json_string_to_data<S: AsRef<str>>(json_string: S) -> Result<DownloadedVi
     Ok(vid_map)
 }
 
+pub fn data_to_json_string(data: &DownloadedVideos) -> Result<String, String> {
+    serde_json::to_string(data).map_err(string_error)
+}
+
+pub fn write_json_data<P: AsRef<Path>>(path: P, data: &DownloadedVideos) -> Result<(), String> {
+    let json_string = data_to_json_string(data)?;
+    std::fs::write(path, json_string).map_err(string_error)
+}
+
 pub fn initialize_data<P: AsRef<Path>>(path: P) -> Result<DownloadedVideos, String> {
     if !path.as_ref().exists() {
         // create it as an empty json file if this
@@ -61,8 +68,8 @@ mod tests {
     fn can_load_json_data() {
         let json_string = r#"
         {
-            "a": { "url": "xyz", "name": "reeeee", "location": "./" },
-            "b": { "url": "qqq", "name": "qqqvid", "location": "qqq.txt" }
+            "a": { "url": "xyz", "location": "./" },
+            "b": { "url": "qqq", "location": "qqq.txt" }
         }
         "#;
 
@@ -72,6 +79,6 @@ mod tests {
         assert!(data_map.contains_key("b"));
 
         let a_vid = &data_map["a"];
-        assert_eq!(a_vid.url, "xyz");
+        assert_eq!(a_vid.location.to_str().unwrap(), "./");
     }
 }
