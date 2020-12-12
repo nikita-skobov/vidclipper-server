@@ -59,6 +59,8 @@ pub async fn cut_video(
         "-progress".into(),
         "pipe:1".into(),
     ];
+    exe_and_args.push("-i".into());
+    exe_and_args.push(input_string);
     if let Some(ref start) = split_request.start {
         exe_and_args.push("-ss".into());
         exe_and_args.push(start.to_string());
@@ -67,8 +69,6 @@ pub async fn cut_video(
         exe_and_args.push("-t".into());
         exe_and_args.push(duration.to_string());
     }
-    exe_and_args.push("-i".into());
-    exe_and_args.push(input_string);
     exe_and_args.push("-acodec".into());
     exe_and_args.push("copy".into());
     exe_and_args.push("-vcodec".into());
