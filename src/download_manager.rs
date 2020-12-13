@@ -1,5 +1,6 @@
 use lazy_static::lazy_static;
 use std::sync::Mutex;
+use std::sync::RwLock;
 use progresslib2::*;
 use rand::prelude::*;
 use rand::distributions::Alphanumeric;
@@ -29,18 +30,22 @@ use transcode_clip_stage::transcode_clip;
 
 #[path = "./data_store.rs"]
 mod data_store;
+use data_store::initialize_config;
 use data_store::initialize_data;
+use data_store::Config;
 use data_store::DownloadedVideos;
 use data_store::DownloadedVideo;
 
 pub const FAILED_TO_ACQUIRE_LOCK: &'static str = "Failed to acquire lock";
 pub const DATA_STORE_PATH: &'static str = "vidclipper_data.json";
+pub const CONFIG_PATH: &'static str = "vidclipper_config.json";
 
 lazy_static! {
     pub static ref PROGHOLDER: Mutex<ProgressHolder<String>> = Mutex::new(
         ProgressHolder::<String>::default()
     );
     static ref DATAHOLDER: Mutex<DownloadedVideos> = Mutex::new(DownloadedVideos::default());
+    static ref CONFIGHOLDER: RwLock<Config> = RwLock::new(Config::default());
 }
 
 pub fn string_error(e: impl Display) -> String {
@@ -201,6 +206,10 @@ pub fn create_download_item(
             None => None
         }
     };
+    let download_dir = match CONFIGHOLDER.read() {
+        Err(_) => PathBuf::from("."),
+        Ok(config) => config.download_dir.to_owned(),
+    };
 
     // temporarily removing transcode stage.
     // do we need it if the cut_video stage
@@ -216,6 +225,7 @@ pub fn create_download_item(
     let should_do_cut_stage = download_request.start.is_some() || download_request.duration.is_some();
     let cut_stage = make_stage!(cut_video;
         key.clone(),
+        download_dir.clone(),
         name,
         SplitRequest {
             start: download_request.start,
@@ -228,7 +238,7 @@ pub fn create_download_item(
         let key_clone = key.clone();
         let url_clone = url.clone();
         let download_task = async move {
-            let res = download_video(key_clone, url).await;
+            let res = download_video(key_clone, url, download_dir).await;
             let mut should_write_data_store = false;
             if let Ok(Some(progvars)) = &res {
                 let original_download_path = progvars.clone_var::<PathBuf>("original_download_path");
@@ -327,6 +337,11 @@ pub fn list_all_downloaded_videos(
     Ok(out_vec)
 }
 
+pub fn get_config() -> Result<Config, String> {
+    let config_guard = CONFIGHOLDER.read().map_err(string_error)?;
+    Ok(config_guard.to_owned())
+}
+
 pub fn get_time_string_from_line<S: AsRef<str>>(line: S) -> Option<String> {
     let line = line.as_ref();
     let time_str = "out_time_us=";
@@ -351,6 +366,11 @@ pub fn get_millis_from_time_string<S: AsRef<str>>(time_string: S) -> Option<u32>
 }
 
 pub fn initialize() -> Result<(), String> {
+    let config = initialize_config(CONFIG_PATH)?;
+    let mut config_guard = CONFIGHOLDER.write().map_err(string_error)?;
+    *config_guard = config;
+    drop(config_guard);
+
     let mut data = initialize_data(DATA_STORE_PATH)?;
     let mut guard = DATAHOLDER.lock().map_err(string_error)?;
 
@@ -360,6 +380,7 @@ pub fn initialize() -> Result<(), String> {
     for (key, value) in data_map.drain() {
         downloaded_videos_map.insert(key, value);
     }
+
     Ok(())
 }
 

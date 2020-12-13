@@ -41,11 +41,16 @@ pub fn get_ytdl_progress(line: &str) -> Option<u8> {
 pub async fn download_video(
     key: String,
     url: String,
+    download_dir: PathBuf,
 ) -> TaskResult {
+    let download_dir_string = match &download_dir.to_str() {
+        Some(s) => s,
+        None => "."
+    };
     let key_clone = key.clone();
     // form the command via all of the args it needs
     // and do basic spawn error checking
-    let output_format = format!("{}.%(ext)s", &key);
+    let output_format = format!("{}/{}.%(ext)s", download_dir_string, &key);
     let exe_and_args = vec![
         "youtube-dl",
         "--newline",
@@ -112,7 +117,7 @@ pub async fn download_video(
             output_path,
             mut info_json_path,
             mut thumbnail_path
-        ) = get_downloaded_paths(&key_clone).await?;
+        ) = get_downloaded_paths(&key_clone, &download_dir).await?;
 
         println!("got output path: {:?}", output_path);
         progvars.insert_var(
@@ -182,10 +187,11 @@ pub async fn extract_metadata(path: &PathBuf) -> YtDlMetadata {
 }
 
 pub async fn get_downloaded_paths<S: AsRef<str>>(
-    matching: S
+    matching: S,
+    dir: &PathBuf,
 ) -> Result<(PathBuf, Option<PathBuf>, Option<PathBuf>), String> {
     // TODO: dont assume current directory
-    let output_paths = find_file_paths_matching(matching, ".").await?;
+    let output_paths = find_file_paths_matching(matching, dir).await?;
     get_downloaded_paths_from_vec(output_paths)
 }
 

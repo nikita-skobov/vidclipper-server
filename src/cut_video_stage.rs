@@ -14,6 +14,7 @@ use super::ProgressVars;
 
 pub async fn cut_video(
     key: String,
+    output_dir: PathBuf,
     output_file_name: String,
     split_request: SplitRequest,
 ) -> TaskResult {
@@ -37,7 +38,8 @@ pub async fn cut_video(
     };
 
     // output should have same extension as input
-    let mut cut_video_outpath = PathBuf::from(&output_file_name);
+    let mut cut_video_outpath = output_dir;
+    cut_video_outpath.push(&output_file_name);
     cut_video_outpath.set_extension("mp4");
     let output_file_name = match cut_video_outpath.to_str() {
         Some(o) => o.to_string(),

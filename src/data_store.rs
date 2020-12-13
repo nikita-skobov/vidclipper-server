@@ -75,7 +75,13 @@ pub fn initialize_data<P: AsRef<Path>>(path: P) -> Result<DownloadedVideos, Stri
 }
 
 pub fn initialize_config<P: AsRef<Path>>(path: P) -> Result<Config, String> {
-    initialize_object(path)
+    let res: Result<Config, String> = initialize_object(path);
+    if let Ok(ref config) = &res {
+        if !config.download_dir.exists() {
+            std::fs::create_dir_all(&config.download_dir).map_err(string_error)?;
+        }
+    }
+    res
 }
 
 #[cfg(test)]
