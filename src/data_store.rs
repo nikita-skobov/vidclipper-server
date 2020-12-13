@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 #[derive(Clone, Default, Debug, Serialize, Deserialize)]
 pub struct Config {
     pub download_dir: PathBuf,
+    pub frontend_dir: PathBuf,
 }
 
 #[derive(Clone, Default, Debug, Serialize, Deserialize)]
