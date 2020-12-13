@@ -214,6 +214,7 @@ pub fn create_download_item(
     //     }
     // );
 
+    let should_do_cut_stage = download_request.start.is_some() || download_request.duration.is_some();
     let cut_stage = make_stage!(cut_video;
         key.clone(),
         name,
@@ -278,7 +279,11 @@ pub fn create_download_item(
     // the download_stage only happens if we havent downloaded
     // the video yet. in that case, it must happen
     // BEFORE the cut stage... obviously
-    progitem.register_stage(cut_stage);
+
+    // only do cut_stage if either download_request.start or .duration is set
+    if should_do_cut_stage {
+        progitem.register_stage(cut_stage);
+    }
     // progitem.register_stage(transcode_stage);
     progitem
 }
