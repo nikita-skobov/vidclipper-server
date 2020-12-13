@@ -1,6 +1,5 @@
 use lazy_static::lazy_static;
 use std::sync::Mutex;
-use std::collections::HashMap;
 use progresslib2::*;
 use rand::prelude::*;
 use rand::distributions::Alphanumeric;
