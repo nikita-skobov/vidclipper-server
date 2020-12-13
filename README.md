@@ -23,23 +23,11 @@ This will create a `build/` directory. This directory is all that we need, so ju
 
 ## 2.
 
-Now let's build this server. First clone and cd into this directory with:
+Now let's build the server:
 
 ```sh
 git clone https://github.com/nikita-skobov/vidclipper-server
 cd vidclipper-server
-```
-
-Then you will need to modify the `Cargo.toml` file and remove or comment out the last few lines. Comment out any lines that look like:
-
-```
-[patch."https://github.com/nikita-skobov/X"]
-X = { path = "../X" }
-```
-
-Next, you are ready to build:
-
-```sh
 cargo build --release
 ```
 
@@ -67,16 +55,3 @@ You can run the server by:
 ```
 
 Which will listen on port 4000 by default. So once its running, you can visit: `http://localhost:4000/` in your browser. If you don't see a webpage that means it did not find the static files that need to exist at the config's `frontend_dir` field.
-
-# Troubleshooting
-
-If you run into this issue:
-
-```
-error: failed to resolve patches for `https://github.com/nikita-skobov/progresslib2-server-extension`
-
-Caused by:
-  failed to load source for dependency `progresslib2-server-extension`
-```
-
-This is because cargo is trying to use the patch defined in the `Cargo.toml`. Remember to comment this out. If you already commented it out, then delete `Cargo.lock` and the `target/` folder and try building again.
