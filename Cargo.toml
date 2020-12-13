@@ -21,9 +21,3 @@ actix-files = "0.4.1"
 rand = "0.7.3"
 progresslib2-server-extension = { git = "https://github.com/nikita-skobov/progresslib2-server-extension" }
 progresslib2 = { git = "https://github.com/nikita-skobov/progresslib2" }
-
-[patch."https://github.com/nikita-skobov/progresslib2"]
-progresslib2 = { path = "../progresslib2" }
-
-[patch."https://github.com/nikita-skobov/progresslib2-server-extension"]
-progresslib2-server-extension = { path = "../progresslib2-server-extension" }
