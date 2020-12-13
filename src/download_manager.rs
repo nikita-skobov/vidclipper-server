@@ -203,13 +203,16 @@ pub fn create_download_item(
         }
     };
 
-    let transcode_stage = make_stage!(transcode_clip;
-        key.clone(),
-        TranscodeRequest {
-            transcode_extension: download_request.transcode_extension,
-            duration: download_request.duration,
-        }
-    );
+    // temporarily removing transcode stage.
+    // do we need it if the cut_video stage
+    // is forcing h264 aac mp4 anyway?...
+    // let transcode_stage = make_stage!(transcode_clip;
+    //     key.clone(),
+    //     TranscodeRequest {
+    //         transcode_extension: download_request.transcode_extension,
+    //         duration: download_request.duration,
+    //     }
+    // );
 
     let cut_stage = make_stage!(cut_video;
         key.clone(),
@@ -276,7 +279,7 @@ pub fn create_download_item(
     // the video yet. in that case, it must happen
     // BEFORE the cut stage... obviously
     progitem.register_stage(cut_stage);
-    progitem.register_stage(transcode_stage);
+    // progitem.register_stage(transcode_stage);
     progitem
 }
 
