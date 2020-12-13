@@ -36,13 +36,9 @@ pub async fn cut_video(
         }
     };
 
-    let input_extension = input_path.extension().map_or_else(
-        || None, |o| o.to_str()
-    ).map_or_else(|| "mkv", |o| o);
-
     // output should have same extension as input
     let mut cut_video_outpath = PathBuf::from(&output_file_name);
-    cut_video_outpath.set_extension(input_extension);
+    cut_video_outpath.set_extension("mp4");
     let output_file_name = match cut_video_outpath.to_str() {
         Some(o) => o.to_string(),
         None => {
@@ -70,9 +66,9 @@ pub async fn cut_video(
         exe_and_args.push(duration.to_string());
     }
     exe_and_args.push("-acodec".into());
-    exe_and_args.push("copy".into());
+    exe_and_args.push("aac".into());
     exe_and_args.push("-vcodec".into());
-    exe_and_args.push("copy".into());
+    exe_and_args.push("h264".into());
     exe_and_args.push("-y".into());
     exe_and_args.push(output_file_name);
     println!("running with commands:\n{:#?}", exe_and_args);
